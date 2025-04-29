@@ -8,6 +8,7 @@ FlagSitter :: struct {
 	args:         []string,
 	string_binds: map[string]^string,
 	int_binds:    map[string]^int,
+	bool_binds:   map[string]^bool,
 }
 
 // create initializes a new FlagSitter instance with the provided arguments.
@@ -22,6 +23,7 @@ create :: proc(desArgs: []string) -> FlagSitter {
 		args = desArgs,
 		string_binds = make(map[string]^string),
 		int_binds = make(map[string]^int),
+		bool_binds = make(map[string]^bool),
 	}
 }
 
@@ -32,6 +34,8 @@ create :: proc(desArgs: []string) -> FlagSitter {
 //   sitter - Pointer to the FlagSitter instance to clean up
 destroy :: proc(sitter: ^FlagSitter) {
 	delete(sitter.string_binds)
+	delete(sitter.int_binds)
+	delete(sitter.bool_binds)
 }
 
 // StringArg registers a string flag with a FlagSitter instance and binds it to the target.
@@ -58,6 +62,18 @@ IntArg :: proc(sitter: ^FlagSitter, target: ^int, flag: string, defaultValue: in
 	sitter.int_binds[flag] = target
 }
 
+// BoolArg registers a bool flag with a FlagSitter instance and binds it to the target.
+//
+// Parameters:
+//  sitter - Pointer to the FlagSitter instance
+//  target - Pointer to the target variable
+//  flag - The flag name (including the dash)
+//  defaultValue - The default value to set if the flag is not provided or the input is invalid
+BoolArg :: proc(sitter: ^FlagSitter, target: ^bool, flag: string, defaultValue: bool) {
+	target^ = defaultValue
+	sitter.bool_binds[flag] = target
+}
+
 // Parse processes the arguments based on the defined bindings.
 // It iterates through the command-line arguments and updates bound variables
 // with their corresponding values.
@@ -72,9 +88,11 @@ IntArg :: proc(sitter: ^FlagSitter, target: ^int, flag: string, defaultValue: in
 //
 //   filename: string
 //   count: int
+//   quiet: bool
 //
 //   flagsitter.StringArg(&sitter, &filename, "-f", "default.txt")
 //   flagsitter.IntArg(&sitter, &count, "-c", 10)
+//   flagsitter.BoolArg(&sitter, &quiet, "-q", false)
 //
 //   flagsitter.Parse(&sitter)
 //   ```
@@ -102,6 +120,29 @@ Parse :: proc(sitter: ^FlagSitter) {
 						target^ = val
 					}
 					i += 2
+					continue
+				}
+			}
+
+			if target, ok := sitter.bool_binds[currentArg]; ok {
+				if i + 1 < len(sitter.args) {
+					valStr := sitter.args[i + 1]
+					if !strings.has_prefix(valStr, "-") {
+						val, ok := strconv.parse_bool(valStr)
+						if ok {
+							target^ = val
+						}
+						i += 2
+						continue
+					} else {
+						// if there's no bool value passed in, assume it's true if present
+						target^ = true
+						i += 1
+						continue
+					}
+				} else {
+					target^ = true
+					i += 1
 					continue
 				}
 			}
